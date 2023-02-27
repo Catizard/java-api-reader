@@ -2,21 +2,27 @@ package reader
 
 import (
 	"fmt"
+	"github.com/catizard/java-api-reader/parser"
 	"io/fs"
+	"log"
+	"os"
 	"path/filepath"
 )
 
 type Reader struct {
 	interestingExt map[string]bool
+	parser         *parser.Parser
 }
 
-func (r *Reader) Init(exts ...string) {
+func (r *Reader) Init(parser *parser.Parser, exts ...string) {
 	r.interestingExt = make(map[string]bool)
 	for _, v := range exts {
 		if err := r.RegisterExt(v); err != nil {
 
 		}
 	}
+
+	r.parser = parser
 }
 
 func (r *Reader) RegisterExt(ext string) error {
@@ -78,7 +84,16 @@ func (r *Reader) Read(path string) ([]string, error) {
 
 		fmt.Printf("ext={%v}\n", ext)
 		if r.ContainExt(ext) {
-			files = append(files, path)
+			//TODO read file and pass contents to parser
+			file, err := os.Open(path)
+			if err != nil {
+				fmt.Println("open file failed with ", err)
+				return err
+			}
+			defer file.Close()
+			log.Printf("ready to read file %v\n", file.Name())
+			r.parser.Parse(file)
+			log.Printf("read file end\n")
 		}
 
 		return nil

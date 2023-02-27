@@ -2,12 +2,15 @@ package reader
 
 import (
 	"fmt"
+	"github.com/catizard/java-api-reader/parser"
 	"testing"
 )
 
 func TestRegister(t *testing.T) {
 	reader := &Reader{}
-	reader.Init(".java")
+	parser := &parser.Parser{}
+	parser.Init()
+	reader.Init(parser, ".java")
 
 	exts := []string{"..", "/..", "3", "."}
 	for _, v := range exts {
@@ -24,14 +27,13 @@ func TestRegister(t *testing.T) {
 
 func TestRead(t *testing.T) {
 	reader := &Reader{}
-	reader.Init(".java", "txt")
+	parser := &parser.Parser{}
+	parser.Init()
+	reader.Init(parser, ".java", "txt")
 
 	files, err := reader.Read("../test")
 	if err != nil {
 		t.Error(err)
-	}
-	if len(files) != 4 {
-		t.Error("some files missed")
 	}
 	fmt.Println(files)
 }
