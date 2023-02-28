@@ -28,12 +28,18 @@ type ControllerApiInfo struct {
 	MethodType string
 }
 
+type ServiceApiInfo struct {
+	ApiInfo
+}
+
 type Parser struct {
 	controllerApiInfos map[string][]ControllerApiInfo
+	serviceApiInfos    map[string][]ServiceApiInfo
 }
 
 func (p *Parser) Init() {
 	p.controllerApiInfos = make(map[string][]ControllerApiInfo)
+	p.serviceApiInfos = make(map[string][]ServiceApiInfo)
 }
 
 func (a *ApiInfo) Init() {
@@ -48,6 +54,7 @@ func (p *Parser) Parse(file *os.File) error {
 	reader := bufio.NewReader(file)
 	for {
 		line, err := reader.ReadString('\n')
+		strings.Trim(line, " ")
 		if err != nil && err != io.EOF {
 			fmt.Printf("read file %v failed with %v\n", file.Name(), err)
 			return err
@@ -58,10 +65,15 @@ func (p *Parser) Parse(file *os.File) error {
 			// log.Printf("[DEBUG] Parse reading line is {%v}\n", line)
 			// log.Printf("[DEBUG] test len(line) > 0 && line[0] == '@' is %v", len(line) > 0 && line[0] == '@')
 			// 如果当前行内容指明了当前类是我们感兴趣的，则将reader整个也就是剩余内容传给doParse处理函数
+			// TODO 当前读取解析的方式有共通的地方，例如我们总是将类上的注解拆除，以及获得类本身的信息。可以先对整个java文件的前段内容做拆解之后再进行解析
 			if len(line) > 0 && line[0] == '@' {
 				if isControllerClass(line) {
 					p.doParseController(reader)
 					log.Printf("[DEBUG] after doParseController, p.controllerApiInfos=%v\n", p.controllerApiInfos)
+				} else if isServiceClass(line) {
+					log.Printf("[DEBUG] caught service class line\n")
+					p.doParseService(reader)
+					log.Printf("[DEBUG] after doParseService, p.serviceApiInfos=%v\n", p.serviceApiInfos)
 				}
 			}
 		}
@@ -142,6 +154,14 @@ func isControllerClass(line string) bool {
 	return false
 }
 
+func isServiceClass(line string) bool {
+	//TODO 增加处理方式
+	if line == "@Service" {
+		return true
+	}
+	return false
+}
+
 func (p *Parser) doParseController(reader *bufio.Reader) {
 	// create a new ControllerApiInfo
 
@@ -158,7 +178,7 @@ func (p *Parser) doParseController(reader *bufio.Reader) {
 			return
 		}
 		if err != nil {
-			fmt.Printf("doParseController read failed", err)
+			fmt.Printf("doParseController read failed with %v\n", err)
 			return
 		}
 
@@ -177,11 +197,11 @@ func (p *Parser) doParseController(reader *bufio.Reader) {
 				fmt.Printf("extract method failed with %v\n", err)
 				return
 			}
-			controllerApiInfo := &ControllerApiInfo{apiInfo, baseUrl + methodUrl, methodType}
+			controllerApiInfo := ControllerApiInfo{apiInfo, baseUrl + methodUrl, methodType}
 			if _, ok := p.controllerApiInfos[baseUrl]; !ok {
 				p.controllerApiInfos[baseUrl] = make([]ControllerApiInfo, 0)
 			}
-			p.controllerApiInfos[baseUrl] = append(p.controllerApiInfos[baseUrl], *controllerApiInfo)
+			p.controllerApiInfos[baseUrl] = append(p.controllerApiInfos[baseUrl], controllerApiInfo)
 			//log.Printf("caught a ControllerApiInfo with baseUrl=%v, info=%v\n", baseUrl, controllerApiInfo)
 			readyForMethod = false
 			continue
@@ -216,6 +236,47 @@ func (p *Parser) doParseController(reader *bufio.Reader) {
 
 				readyForMethod = true
 			}
+		}
+	}
+}
+
+func (p *Parser) doParseService(reader *bufio.Reader) {
+	afterClass := false
+	serviceName := ""
+	for {
+		line, err := reader.ReadString('\n')
+		if err == io.EOF {
+			return
+		}
+		if err != nil {
+			fmt.Printf("doParseController read failed with %v\n", err)
+			return
+		}
+
+		line = strings.Trim(line, " ")
+		line = strings.Replace(line, "\r\n", "", -1)
+
+		if !afterClass {
+			if strings.HasPrefix(line, "public class") {
+				log.Printf("[TODO] doParseService caught class line = %v\n", line)
+				ss := strings.Split(line, " ")
+				serviceName = ss[2]
+				afterClass = true
+			}
+		} else {
+			if !strings.HasPrefix(line, "public") {
+				continue
+			}
+
+			apiInfo, err := extractMethod(line)
+			if err != nil {
+				log.Fatalf("%v\n", err)
+			}
+			info := ServiceApiInfo{apiInfo}
+			if _, ok := p.serviceApiInfos[serviceName]; !ok {
+				p.serviceApiInfos[serviceName] = make([]ServiceApiInfo, 0)
+			}
+			p.serviceApiInfos[serviceName] = append(p.serviceApiInfos[serviceName], info)
 		}
 	}
 }
