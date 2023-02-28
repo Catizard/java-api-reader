@@ -32,14 +32,20 @@ type ServiceApiInfo struct {
 	ApiInfo
 }
 
+type RepositoryApiInfo struct {
+	ApiInfo
+}
+
 type Parser struct {
 	controllerApiInfos map[string][]ControllerApiInfo
 	serviceApiInfos    map[string][]ServiceApiInfo
+	repositoryApiInfos map[string][]RepositoryApiInfo
 }
 
 func (p *Parser) Init() {
 	p.controllerApiInfos = make(map[string][]ControllerApiInfo)
 	p.serviceApiInfos = make(map[string][]ServiceApiInfo)
+	p.repositoryApiInfos = make(map[string][]RepositoryApiInfo)
 }
 
 func (a *ApiInfo) Init() {
@@ -71,9 +77,11 @@ func (p *Parser) Parse(file *os.File) error {
 					p.doParseController(reader)
 					log.Printf("[DEBUG] after doParseController, p.controllerApiInfos=%v\n", p.controllerApiInfos)
 				} else if isServiceClass(line) {
-					log.Printf("[DEBUG] caught service class line\n")
 					p.doParseService(reader)
 					log.Printf("[DEBUG] after doParseService, p.serviceApiInfos=%v\n", p.serviceApiInfos)
+				} else if isRepositoryClass(line) {
+					p.doParseRepository(reader)
+					log.Printf("[DEBUG] after doParseRepository, p.repositoryApiInfos=%v\n", p.repositoryApiInfos)
 				}
 			}
 		}
@@ -128,6 +136,7 @@ func doExtractMethodParams(params string, apiInfo *ApiInfo) {
 	}
 
 	for _, v := range ss {
+		v = strings.Trim(v, " ")
 		// every v of ss is a param
 		param := Param{}
 		sv := strings.Split(v, " ")
@@ -160,6 +169,10 @@ func isServiceClass(line string) bool {
 		return true
 	}
 	return false
+}
+
+func isRepositoryClass(line string) bool {
+	return strings.HasPrefix(line, "@Repository")
 }
 
 func (p *Parser) doParseController(reader *bufio.Reader) {
@@ -249,7 +262,7 @@ func (p *Parser) doParseService(reader *bufio.Reader) {
 			return
 		}
 		if err != nil {
-			fmt.Printf("doParseController read failed with %v\n", err)
+			fmt.Printf("doParseService read failed with %v\n", err)
 			return
 		}
 
@@ -258,7 +271,6 @@ func (p *Parser) doParseService(reader *bufio.Reader) {
 
 		if !afterClass {
 			if strings.HasPrefix(line, "public class") {
-				log.Printf("[TODO] doParseService caught class line = %v\n", line)
 				ss := strings.Split(line, " ")
 				serviceName = ss[2]
 				afterClass = true
@@ -279,6 +291,44 @@ func (p *Parser) doParseService(reader *bufio.Reader) {
 			p.serviceApiInfos[serviceName] = append(p.serviceApiInfos[serviceName], info)
 		}
 	}
+}
+
+func (p *Parser) doParseRepository(reader *bufio.Reader) {
+	afterClass := false
+	repositoryName := ""
+	for {
+		line, err := reader.ReadString('\n')
+		if err == io.EOF {
+			return
+		}
+		if err != nil {
+			fmt.Printf("doParseRepository read failed with %v\n", err)
+			return
+		}
+
+		line = strings.Trim(line, " ")
+		line = strings.Replace(line, "\r\n", "", -1)
+
+		if !afterClass {
+			if strings.HasPrefix(line, "public interface") {
+				afterClass = true
+				repositoryName = strings.Split(line, " ")[2]
+			}
+		} else {
+			if strings.HasSuffix(line, ";") {
+				apiInfo, err := extractMethod(line)
+				if err != nil {
+					log.Fatalf("%v\n", err)
+				}
+				repositoryApiInfo := RepositoryApiInfo{apiInfo}
+				if _, ok := p.repositoryApiInfos[repositoryName]; !ok {
+					p.repositoryApiInfos[repositoryName] = make([]RepositoryApiInfo, 0)
+				}
+				p.repositoryApiInfos[repositoryName] = append(p.repositoryApiInfos[repositoryName], repositoryApiInfo)
+			}
+		}
+	}
+
 }
 
 func (p Param) String() string {
