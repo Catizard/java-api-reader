@@ -12,6 +12,7 @@ import (
 type Param struct {
 	pAnno   string
 	pType   string
+	pName   string
 	comment string
 }
 
@@ -151,6 +152,7 @@ func doExtractMethodParams(params string, apiInfo *ApiInfo) {
 		}
 
 		param.pType = sv[0]
+		param.pName = sv[1]
 		apiInfo.params = append(apiInfo.params, param)
 	}
 }
